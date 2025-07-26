@@ -1,0 +1,11 @@
+http:
+  host: 127.0.0.1
+  port: 8888
+  pprof: false
+
+log:
+  level: info
+  path: "./log/fund_transactions.log"
+
+db:
+  name: fund.db
