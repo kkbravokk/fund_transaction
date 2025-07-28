@@ -9,18 +9,25 @@ const (
 	InterestRage      = 0.0001 // 利率
 )
 
+const (
+	Buy  = "buy"
+	Sell = "sell"
+)
+
 type Transaction struct {
-	ID           int64     `json:"id" gorm:"primary"`
-	BuyID        int64     `json:"buy_id"`
-	Unit         float64   `json:"unit"`          // 单价
-	Amount       int       `json:"amount"`        // 数量
-	Price        float64   `json:"price"`         // 价格
-	Load         float64   `json:"load"`          // 手续费
-	LeftAmount   int       `json:"left_amount"`   // 剩余数量
-	Profit       float64   `json:"profit"`        // 利润
-	ProfitMargin float64   `json:"profit_margin"` // 利润率
-	NetProfit    float64   `json:"net_profit"`    // 利润
-	CreatedAt    time.Time `json:"created_at"`    // 创建时间
+	ID              int64     `json:"id" gorm:"primary"`
+	OriginalBuyId   int64     `json:"original_buy_id"`  // 对应的买入
+	TransactionType string    `json:"transaction_type"` // 买入或卖出, buy/sell
+	FundCode        string    `json:"fund_code"`        // 证券代码
+	Unit            float64   `json:"unit"`             // 单价
+	Amount          int       `json:"amount"`           // 数量
+	Price           float64   `json:"price"`            // 价格
+	Load            float64   `json:"load"`             // 手续费
+	LeftAmount      int       `json:"left_amount"`      // 剩余数量
+	Profit          float64   `json:"profit"`           // 利润
+	ProfitMargin    float64   `json:"profit_margin"`    // 利润率
+	NetProfit       float64   `json:"net_profit"`       // 利润
+	CreatedAt       time.Time `json:"created_at"`       // 创建时间
 }
 
 func (t *Transaction) TableName() string {
@@ -28,7 +35,7 @@ func (t *Transaction) TableName() string {
 }
 
 func (t *Transaction) IsBuy() bool {
-	return t.BuyID == 0
+	return t.TransactionType == Buy
 }
 
 func (t *Transaction) CalculatePrice() {

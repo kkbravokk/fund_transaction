@@ -1,6 +1,8 @@
 CREATE TABLE `transaction` (
     id INTEGER PRIMARY KEY NOT NULL,
-    buy_id INTEGER NOT NULL,
+    original_buy_id INTEGER NOT NULL,
+    fund_code TEXT NOT NULL,
+    transaction_type TEXT NOT NULL,
     unit REAL NOT NULL,
     amount INTEGER NOT NULL,
     price REAL NOT NULL,
@@ -10,4 +12,9 @@ CREATE TABLE `transaction` (
     profit_margin REAL NOT NULL,
     net_profit REAL NOT NULL,
     created_at DATETIME NOT NULL
+);
+
+CREATE TABLE `fund` (
+    code TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL
 );
