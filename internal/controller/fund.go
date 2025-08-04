@@ -7,9 +7,9 @@ import (
 	"funds_transaction/internal/request"
 	"funds_transaction/internal/service"
 	"funds_transaction/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 func Funds(c *gin.Context) {

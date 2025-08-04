@@ -6,10 +6,11 @@ import (
 )
 
 type TransactionListReq struct {
-	FundCode      string `json:"fund_code" form:"fund_code"`
-	StartTime     int64  `json:"start_time" form:"start_time"`
-	EndTime       int64  `json:"end_time" form:"end_time"`
-	OriginalBuyID int64  `json:"original_buy_id" form:"original_buy_id"`
+	FundCode        string `json:"fund_code" form:"fund_code"`
+	StartTime       int64  `json:"start_time" form:"start_time"`
+	EndTime         int64  `json:"end_time" form:"end_time"`
+	OriginalBuyID   int64  `json:"original_buy_id" form:"original_buy_id"`
+	TransactionType string `json:"transaction_type" form:"transaction_type"`
 
 	*database.Pager
 	*database.Sorter
@@ -17,11 +18,7 @@ type TransactionListReq struct {
 
 type TransactionListResp struct {
 	Items []*model.Transaction `json:"items"`
-	*database.Pager
-}
-
-type AddTransactions struct {
-	*model.Transaction
+	Pager *database.Pager      `json:"pager"`
 }
 
 type AddTransactionsResp struct {
@@ -37,7 +34,7 @@ type FundListReq struct {
 }
 
 type FundListResp struct {
-	Items []*model.Fund
+	Items []*model.Fund `json:"items"`
 
-	*database.Pager
+	Pager *database.Pager `json:"pager"`
 }

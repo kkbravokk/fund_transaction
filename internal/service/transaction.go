@@ -36,6 +36,9 @@ func TransactionsWithTx(tx *gorm.DB, req *request.TransactionListReq) *request.T
 	if req.OriginalBuyID > 0 {
 		query = query.Where("original_buy_id = ?", req.OriginalBuyID)
 	}
+	if req.TransactionType != "" {
+		query = query.Where("transaction_type = ?", req.TransactionType)
+	}
 
 	if req.Pager == nil {
 		req.Pager = database.DefaultPager()
@@ -48,7 +51,7 @@ func TransactionsWithTx(tx *gorm.DB, req *request.TransactionListReq) *request.T
 	req.Sorter.Load(query)
 
 	var total int64
-	query.Find(&transactions).Count(&total)
+	query.Find(&transactions).Limit(-1).Offset(-1).Count(&total)
 	req.Pager.SetTotalCount(int(total))
 
 	return &request.TransactionListResp{Items: transactions, Pager: req.Pager}
@@ -60,17 +63,17 @@ func GetTransactionByID(ctx context.Context, id int64) (*model.Transaction, erro
 }
 
 func GetTransactionByIDWithTx(tx *gorm.DB, id int64) (*model.Transaction, error) {
-	fund := &model.Transaction{}
-	err := tx.First(fund, id).Error
-	return fund, err
+	transaction := &model.Transaction{}
+	err := tx.First(transaction, id).Error
+	return transaction, err
 }
 
 func AddTransaction(ctx context.Context, req *model.Transaction) (int64, error) {
 	err := database.GetDB(ctx).Transaction(func(tx *gorm.DB) error {
 		// 处理数据
 		req.CalculateLoad()
-		if req.CreatedAt.IsZero() {
-			req.CreatedAt = time.Now()
+		if req.CreatedAt == 0 {
+			req.CreatedAt = time.Now().Unix()
 		}
 		// 买入数据
 		if req.IsBuy() {
@@ -89,6 +92,9 @@ func addSellTransaction(tx *gorm.DB, req *model.Transaction) error {
 	if err != nil {
 		logrus.Errorf("get transactions by id err: %v", err)
 		return errors.WrapC(errors.CodeUnknownError, err)
+	}
+	if buy.FundCode != req.FundCode {
+		return errors.WrapC(errors.CodeBadRequest, fmt.Errorf("fund code not match"))
 	}
 	buy.LeftAmount -= req.Amount
 	if buy.LeftAmount < 0 {
@@ -116,4 +122,46 @@ func addSellTransaction(tx *gorm.DB, req *model.Transaction) error {
 		return errors.WrapC(errors.CodeUnknownError, err)
 	}
 	return nil
+}
+
+func UpdateTransaction(ctx context.Context, req *model.Transaction) error {
+	// todo complete
+	return nil
+}
+
+func DelTransaction(ctx context.Context, id int64) error {
+	transaction, err := GetTransactionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	err = database.GetDB(ctx).Transaction(func(tx *gorm.DB) error {
+		if transaction.IsBuy() {
+			deletes := []int64{transaction.ID}
+			sells := Transactions(ctx, &request.TransactionListReq{OriginalBuyID: transaction.OriginalBuyId})
+			for _, sell := range sells.Items {
+				deletes = append(deletes, sell.ID)
+			}
+			err = tx.Delete(&model.Transaction{}, deletes).Error
+			return err
+		}
+		// 卖出数据，先更新买入，再删除卖出
+		var buy *model.Transaction
+		buy, err = GetTransactionByIDWithTx(tx, transaction.OriginalBuyId)
+		if err != nil {
+			logrus.Errorf("get transactions by id err: %v", err)
+			return errors.WrapC(errors.CodeUnknownError, err)
+		}
+		buy.LeftAmount += transaction.Amount
+		buy.Profit = 0
+		buy.NetProfit = 0
+		buy.ProfitMargin = 0
+		if err = tx.Save(buy).Error; err != nil {
+			logrus.Errorf("save buy transactions err: %v", err)
+			return errors.WrapC(errors.CodeUnknownError, err)
+		}
+		err = tx.Delete(&model.Transaction{}, transaction.ID).Error
+		return err
+	})
+	return err
+
 }

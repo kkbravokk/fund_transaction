@@ -29,7 +29,7 @@ func Funds(ctx context.Context, req *request.FundListReq) *request.FundListResp 
 	req.Sorter.Load(query)
 
 	var total int64
-	query.Find(&funds).Count(&total)
+	query.Find(&funds).Limit(-1).Offset(-1).Count(&total)
 	req.Pager.SetTotalCount(int(total))
 
 	return &request.FundListResp{Items: funds, Pager: req.Pager}

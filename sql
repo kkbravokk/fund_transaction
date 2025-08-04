@@ -11,10 +11,11 @@ CREATE TABLE `transaction` (
     profit REAL NOT NULL,
     profit_margin REAL NOT NULL,
     net_profit REAL NOT NULL,
-    created_at DATETIME NOT NULL
+    created_at INTEGER NOT NULL
 );
 
 CREATE TABLE `fund` (
-    code TEXT PRIMARY KEY NOT NULL,
+    id INTEGER PRIMARY KEY NOT NULL,
+    code TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL
 );
