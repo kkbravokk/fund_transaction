@@ -32,8 +32,8 @@ type HTTPConfig struct {
 }
 
 type LogConfig struct {
-	LogLevel int    `json:"log_level"`
-	Path     string `json:"path"`
+	Level string `json:"level"`
+	Path  string `json:"path"`
 }
 
 type DatabaseConfig struct {

@@ -137,7 +137,7 @@ func DelTransaction(ctx context.Context, id int64) error {
 	err = database.GetDB(ctx).Transaction(func(tx *gorm.DB) error {
 		if transaction.IsBuy() {
 			deletes := []int64{transaction.ID}
-			sells := Transactions(ctx, &request.TransactionListReq{OriginalBuyID: transaction.OriginalBuyId})
+			sells := Transactions(ctx, &request.TransactionListReq{OriginalBuyID: transaction.ID})
 			for _, sell := range sells.Items {
 				deletes = append(deletes, sell.ID)
 			}

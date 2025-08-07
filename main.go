@@ -43,7 +43,11 @@ func initComponents(conf *config.Config) {
 }
 
 func initLog(conf *config.Config) {
-	logrus.SetLevel(logrus.Level(conf.Log.LogLevel))
+	level, err := logrus.ParseLevel(conf.Log.Level)
+	if err != nil {
+		panic(err)
+	}
+	logrus.SetLevel(level)
 
 	output, err := os.OpenFile(conf.Log.Path, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
