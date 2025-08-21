@@ -11,6 +11,7 @@ type TransactionListReq struct {
 	EndTime         int64  `json:"end_time" form:"end_time"`
 	OriginalBuyID   int64  `json:"original_buy_id" form:"original_buy_id"`
 	TransactionType string `json:"transaction_type" form:"transaction_type"`
+	Left            bool   `json:"left" form:"left" description:"query left amount great than 0"`
 
 	*database.Pager
 	*database.Sorter

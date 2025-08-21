@@ -39,6 +39,9 @@ func TransactionsWithTx(tx *gorm.DB, req *request.TransactionListReq) *request.T
 	if req.TransactionType != "" {
 		query = query.Where("transaction_type = ?", req.TransactionType)
 	}
+	if req.Left {
+		query = query.Where("left_amount > 0")
+	}
 
 	if req.Pager == nil {
 		req.Pager = database.DefaultPager()
