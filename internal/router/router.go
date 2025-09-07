@@ -13,11 +13,12 @@ func InitRouter(r *gin.Engine) {
 
 	apiV1 := r.Group("/api/v1/transaction")
 
-	apiV1.GET("", controller.Transactions)           // 获取基金交易记录列表
-	apiV1.POST("", controller.AddTransaction)        // 新增买入/卖出记录
-	apiV1.GET("/:id", controller.GetTransactionByID) // 获取指定ID的详细记录
-	apiV1.PUT("/:id", controller.UpdateTransaction)  // 更新某条记录
-	apiV1.DELETE("/:id", controller.DelTransaction)  // 删除指定ID记录
+	apiV1.GET("", controller.Transactions)                    // 获取基金交易记录列表
+	apiV1.POST("", controller.AddTransaction)                 // 新增买入/卖出记录
+	apiV1.GET("/:id", controller.GetTransactionByID)          // 获取指定ID的详细记录
+	apiV1.PUT("/:id", controller.UpdateTransaction)           // 更新某条记录
+	apiV1.DELETE("/:id", controller.DelTransaction)           // 删除指定ID记录
+	apiV1.GET("/export", controller.ExportTransactionToExcel) // 导出记录到Excel
 	//apiV1.GET("/stats", controller.Funds)         // 计算累计收益、持仓汇总等
 
 	fundV1 := r.Group("api/v1/fund")

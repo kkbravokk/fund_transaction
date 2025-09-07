@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"time"
 
 	"funds_transaction/internal/model"
@@ -11,6 +13,7 @@ import (
 	"funds_transaction/pkg/errors"
 
 	"github.com/sirupsen/logrus"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -166,5 +169,108 @@ func DelTransaction(ctx context.Context, id int64) error {
 		return err
 	})
 	return err
+}
 
+func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
+	transactions := Transactions(ctx, &request.TransactionListReq{
+		Pager: &database.Pager{
+			Page:     1,
+			PageSize: 1000,
+		},
+	})
+
+	fundGroups := make(map[string][]*model.Transaction)
+	buyTransactions := make(map[string][]*model.Transaction)
+	sellTransactions := make(map[int64][]*model.Transaction)
+
+	for _, t := range transactions.Items {
+		fundGroups[t.FundCode] = append(fundGroups[t.FundCode], t)
+		if t.IsBuy() {
+			buyTransactions[t.FundCode] = append(buyTransactions[t.FundCode], t)
+		} else {
+			sellTransactions[t.OriginalBuyId] = append(sellTransactions[t.OriginalBuyId], t)
+		}
+	}
+
+	f := excelize.NewFile()
+	defaultSheet := f.GetSheetName(0)
+	_ = f.DeleteSheet(defaultSheet)
+
+	// 定义灰色样式
+	grayStyle, _ := f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Pattern: 1,
+			Color:   []string{"#D3D3D3"},
+		},
+	})
+
+	for fundCode := range fundGroups {
+		sheetName := fundCode
+		if len(sheetName) > 31 {
+			sheetName = sheetName[:31]
+		}
+		// 创建sheet
+		index, err := f.NewSheet(sheetName)
+		if err != nil {
+			return nil, err
+		}
+		f.SetActiveSheet(index)
+
+		// 设置表头
+		headers := []string{"类型", "单价", "数量", "价格", "时间", "手续费", "剩余数量", "利润", "利润率"}
+		for col, header := range headers {
+			cell := string(rune(col+'A')) + "1"
+			_ = f.SetCellValue(sheetName, cell, header)
+		}
+
+		// 按买入单价排序
+		buys := buyTransactions[fundCode]
+		sort.Slice(buys, func(i, j int) bool {
+			return buys[i].Unit > buys[j].Unit
+		})
+
+		row := 2
+		for _, buy := range buys {
+			rowName := strconv.Itoa(row)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "买入")
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), buy.Unit)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("C%s", rowName), buy.Amount)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), buy.Price)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("E%s", rowName), time.Unix(buy.CreatedAt, 0).Format("2006-01-02 15:04:05"))
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), buy.Load)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("G%s", rowName), buy.LeftAmount)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), buy.Profit)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), buy.ProfitMargin)
+
+			if buy.LeftAmount == 0 {
+				for col := 'A'; col <= 'I'; col++ {
+					cell := string(col) + rowName
+					_ = f.SetCellStyle(sheetName, cell, cell, grayStyle)
+				}
+			}
+			row++
+
+			sells := sellTransactions[buy.ID]
+			sort.Slice(sells, func(i, j int) bool {
+				return sells[i].CreatedAt <= sells[j].CreatedAt
+			})
+
+			rowName = strconv.Itoa(row)
+			for _, sell := range sells {
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "卖出")
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), sell.Unit)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("C%s", rowName), sell.Amount)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), buy.Price)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("E%s", rowName), time.Unix(sell.CreatedAt, 0).Format("2006-01-02 15:04:05"))
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), sell.Load)
+				//_ = f.SetCellValue(sheetName, fmt.Sprintf("G%s", rowName), sell.LeftAmount)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), sell.Profit)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), sell.ProfitMargin)
+
+				row++
+			}
+		}
+	}
+	return f, nil
 }
