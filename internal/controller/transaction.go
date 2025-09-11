@@ -109,6 +109,10 @@ func ExportTransactionToExcel(c *gin.Context) {
 	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Header("Content-Disposition", "attachment; filename="+fileName)
 
+	defer func() {
+		_ = excelFile.Close()
+	}()
+
 	_, err = excelFile.WriteTo(c.Writer)
 	if err != nil {
 		logrus.Errorf("export transaction err: %v", err)
@@ -116,5 +120,4 @@ func ExportTransactionToExcel(c *gin.Context) {
 		c.JSON(code, err.Error())
 		return
 	}
-	_ = excelFile.Close()
 }

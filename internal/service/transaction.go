@@ -171,6 +171,30 @@ func DelTransaction(ctx context.Context, id int64) error {
 	return err
 }
 
+var (
+	defaultCellStyle = &excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Pattern: 1,
+			Color:   []string{"#FFFFFF"},
+		},
+	}
+	grayCellStyle = &excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Pattern: 1,
+			Color:   []string{"#D3D3D3"},
+		},
+	}
+	activeCellStyle = &excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Pattern: 1,
+			Color:   []string{"#FFEBEB"},
+		},
+	}
+)
+
 func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 	transactions := Transactions(ctx, &request.TransactionListReq{
 		Pager: &database.Pager{
@@ -179,12 +203,12 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 		},
 	})
 
-	fundGroups := make(map[string][]*model.Transaction)
+	fundGroups := make(map[string]bool)
 	buyTransactions := make(map[string][]*model.Transaction)
 	sellTransactions := make(map[int64][]*model.Transaction)
 
 	for _, t := range transactions.Items {
-		fundGroups[t.FundCode] = append(fundGroups[t.FundCode], t)
+		fundGroups[t.FundCode] = true
 		if t.IsBuy() {
 			buyTransactions[t.FundCode] = append(buyTransactions[t.FundCode], t)
 		} else {
@@ -193,17 +217,11 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 	}
 
 	f := excelize.NewFile()
-	defaultSheet := f.GetSheetName(0)
-	_ = f.DeleteSheet(defaultSheet)
 
 	// 定义灰色样式
-	grayStyle, _ := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Pattern: 1,
-			Color:   []string{"#D3D3D3"},
-		},
-	})
+	grayStyle, _ := f.NewStyle(grayCellStyle)
+	defaultStyle, _ := f.NewStyle(defaultCellStyle)
+	activeStyle, _ := f.NewStyle(activeCellStyle)
 
 	for fundCode := range fundGroups {
 		sheetName := fundCode
@@ -230,8 +248,9 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 			return buys[i].Unit > buys[j].Unit
 		})
 
-		row := 2
+		row := 1
 		for _, buy := range buys {
+			row++
 			rowName := strconv.Itoa(row)
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "买入")
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), buy.Unit)
@@ -243,34 +262,47 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), buy.Profit)
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), buy.ProfitMargin)
 
-			if buy.LeftAmount == 0 {
-				for col := 'A'; col <= 'I'; col++ {
-					cell := string(col) + rowName
-					_ = f.SetCellStyle(sheetName, cell, cell, grayStyle)
-				}
+			var style int
+			switch {
+			case buy.LeftAmount == buy.Amount:
+				style = defaultStyle
+			case buy.LeftAmount == 0:
+				style = grayStyle
+			default:
+				style = activeStyle
 			}
-			row++
+			for col := 'A'; col <= 'I'; col++ {
+				cell := string(col) + rowName
+				_ = f.SetCellStyle(sheetName, cell, cell, style)
+			}
 
 			sells := sellTransactions[buy.ID]
 			sort.Slice(sells, func(i, j int) bool {
 				return sells[i].CreatedAt <= sells[j].CreatedAt
 			})
 
-			rowName = strconv.Itoa(row)
 			for _, sell := range sells {
+				row++
+				rowName = strconv.Itoa(row)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "卖出")
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), sell.Unit)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("C%s", rowName), sell.Amount)
-				_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), buy.Price)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), sell.Price)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("E%s", rowName), time.Unix(sell.CreatedAt, 0).Format("2006-01-02 15:04:05"))
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), sell.Load)
 				//_ = f.SetCellValue(sheetName, fmt.Sprintf("G%s", rowName), sell.LeftAmount)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), sell.Profit)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), sell.ProfitMargin)
 
-				row++
+				for col := 'A'; col <= 'I'; col++ {
+					cell := string(col) + rowName
+					_ = f.SetCellStyle(sheetName, cell, cell, grayStyle)
+				}
+
 			}
 		}
 	}
+	defaultSheet := f.GetSheetName(0)
+	_ = f.DeleteSheet(defaultSheet)
 	return f, nil
 }
