@@ -5,6 +5,22 @@ import (
 	"funds_transaction/pkg/database"
 )
 
+type PreprocessingResp struct {
+	RawRecordCount   int                 `json:"raw_record_count"`
+	ParseRecordCount int                 `json:"parse_record_count"`
+	Data             []*PreProcessRecord `json:"data"`
+}
+
+type PreProcessRecord struct {
+	OriginalBuyId   int     `json:"original_buy_id"`
+	TransactionType string  `json:"transaction_type"`
+	FundCode        string  `json:"fund_code"`
+	Unit            float64 `json:"unit"`
+	Amount          int64   `json:"amount"`
+	CreatedAt       int64   `json:"created_at"`
+	Create          string  `json:"create"`
+}
+
 type TransactionListReq struct {
 	FundCode        string `json:"fund_code" form:"fund_code"`
 	StartTime       int64  `json:"start_time" form:"start_time"`

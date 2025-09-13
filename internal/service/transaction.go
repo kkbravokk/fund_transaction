@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"funds_transaction/internal/model"
@@ -16,6 +18,76 @@ import (
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
+
+func Preprocessing(ctx context.Context, data string) *request.PreprocessingResp {
+	// 先在每个“已成交”后添加一个特殊分隔符(如"end"), 再按分隔符分割，得到单条记录（最后一条会多一个空字符串，需过滤）
+	const separator = "->end"
+	withSeparator := strings.ReplaceAll(data, "已成交", fmt.Sprintf("已成交%s", separator))
+	rawRecords := strings.Split(withSeparator, separator)
+	// 多行匹配正则(使用(?s)单行模式，让.匹配换行符)
+	pattern := `(?s)^([^\d]+?)(\d+\.\w+)\s+?(买入|卖出)\s+成交价格:(\d+\.\d+)元\s*成交数量:(\d+)\s+\s*>?\s*成交时间:(\d{4}-\d{2}-\d{2})\s*(\d{2}:\d{2}:\d{2})\s*>?\s*已成交`
+	re := regexp.MustCompile(pattern)
+
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		logrus.Errorf("preprocessing load location err: %v", err)
+		return nil
+	}
+
+	res := request.PreprocessingResp{}
+	// 解析每条记录
+	for i, record := range rawRecords {
+		// 去除记录中的换行符，统一转为空格（避免换行影响匹配）
+		cleanRecord := strings.ReplaceAll(record, "\n", " ")
+		cleanRecord = strings.TrimSpace(cleanRecord)
+		if cleanRecord == "" {
+			continue
+		}
+		res.RawRecordCount++
+		matches := re.FindStringSubmatch(cleanRecord)
+		if matches == nil {
+			logrus.Errorf("match %dth failed: %s", i+1, cleanRecord)
+			continue
+		}
+		create := fmt.Sprintf("%s %s", matches[6], matches[7])
+		createAt, err := time.ParseInLocation("2006-01-02 15:04:05", create, location)
+		if err != nil {
+			logrus.Errorf("parse %dth in location failed: %s", i+1, create)
+			continue
+		}
+		var transactionType string
+		switch matches[3] {
+		case model.BuyInChinese:
+			transactionType = model.Buy
+		case model.SellInChinese:
+			transactionType = model.Sell
+		}
+		unit, err := strconv.ParseFloat(matches[4], 64)
+		if err != nil {
+			logrus.Errorf("parse %dth unit failed: %s", i+1, matches[4])
+			continue
+		}
+		amount, err := strconv.ParseInt(matches[5], 10, 64)
+		if err != nil {
+			logrus.Errorf("parse %dth amount failed: %s", i+1, matches[5])
+			continue
+		}
+		preRecord := &request.PreProcessRecord{
+			TransactionType: transactionType,
+			FundCode:        matches[2],
+			Unit:            unit,
+			Amount:          amount,
+			CreatedAt:       createAt.Unix(),
+			Create:          create,
+		}
+		res.Data = append(res.Data, preRecord)
+		res.ParseRecordCount++
+	}
+	sort.SliceStable(res.Data, func(i, j int) bool {
+		return res.Data[i].CreatedAt <= res.Data[j].CreatedAt
+	})
+	return &res
+}
 
 func Transactions(ctx context.Context, req *request.TransactionListReq) *request.TransactionListResp {
 	tx := database.GetDB(ctx)
@@ -186,7 +258,7 @@ var (
 			Color:   []string{"#D3D3D3"},
 		},
 	}
-	activeCellStyle = &excelize.Style{
+	partialCellStyle = &excelize.Style{
 		Fill: excelize.Fill{
 			Type:    "pattern",
 			Pattern: 1,
@@ -221,7 +293,7 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 	// 定义灰色样式
 	grayStyle, _ := f.NewStyle(grayCellStyle)
 	defaultStyle, _ := f.NewStyle(defaultCellStyle)
-	activeStyle, _ := f.NewStyle(activeCellStyle)
+	activeStyle, _ := f.NewStyle(partialCellStyle)
 
 	for fundCode := range fundGroups {
 		sheetName := fundCode
@@ -255,12 +327,12 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "买入")
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), buy.Unit)
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("C%s", rowName), buy.Amount)
-			_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), buy.Price)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), fmt.Sprintf("%.2f", buy.Price))
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("E%s", rowName), time.Unix(buy.CreatedAt, 0).Format("2006-01-02 15:04:05"))
-			_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), buy.Load)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), fmt.Sprintf("%.2f", buy.Load))
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("G%s", rowName), buy.LeftAmount)
-			_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), buy.Profit)
-			_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), buy.ProfitMargin)
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), fmt.Sprintf("%.2f", buy.Profit))
+			_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), fmt.Sprintf("%.2f", buy.ProfitMargin))
 
 			var style int
 			switch {
@@ -287,12 +359,12 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "卖出")
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("B%s", rowName), sell.Unit)
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("C%s", rowName), sell.Amount)
-				_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), sell.Price)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("D%s", rowName), fmt.Sprintf("%.2f", sell.Price))
 				_ = f.SetCellValue(sheetName, fmt.Sprintf("E%s", rowName), time.Unix(sell.CreatedAt, 0).Format("2006-01-02 15:04:05"))
-				_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), sell.Load)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("F%s", rowName), fmt.Sprintf("%.2f", sell.Load))
 				//_ = f.SetCellValue(sheetName, fmt.Sprintf("G%s", rowName), sell.LeftAmount)
-				_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), sell.Profit)
-				_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), sell.ProfitMargin)
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("H%s", rowName), fmt.Sprintf("%.2f", sell.Profit))
+				_ = f.SetCellValue(sheetName, fmt.Sprintf("I%s", rowName), fmt.Sprintf("%.2f", sell.ProfitMargin))
 
 				for col := 'A'; col <= 'I'; col++ {
 					cell := string(col) + rowName

@@ -13,6 +13,7 @@ func InitRouter(r *gin.Engine) {
 
 	apiV1 := r.Group("/api/v1/transaction")
 
+	apiV1.POST("/preprocessing", controller.Preprocessing)    // 预处理交易数据，转换成json body数据，方便接口调用
 	apiV1.GET("", controller.Transactions)                    // 获取基金交易记录列表
 	apiV1.POST("", controller.AddTransaction)                 // 新增买入/卖出记录
 	apiV1.GET("/:id", controller.GetTransactionByID)          // 获取指定ID的详细记录

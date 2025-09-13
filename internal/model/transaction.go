@@ -8,8 +8,10 @@ const (
 )
 
 const (
-	Buy  = "buy"
-	Sell = "sell"
+	Buy           = "buy"
+	BuyInChinese  = "买入"
+	Sell          = "sell"
+	SellInChinese = "卖出"
 )
 
 type Transaction struct {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
+
+// Preprocessing 预处理数据，数据大致为
+// 基金名 基金代码
+// 买入/卖出 成交价格:xxx元成交数量:xxxx
+// 成交时间:2025-01-01 10:00:00 >
+// 已成交
+// 基金名基金代码
+// 买入/卖出 成交价格:xxx元 成交数量:xxxx
+// 成交时间:2025-01-0110:00:00 >
+// 已成交
+func Preprocessing(c *gin.Context) {
+	data, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logrus.Errorf("preprocessing transaction err: %v", err)
+		c.JSON(http.StatusBadRequest, errors.WrapC(errors.CodeBadRequest, err).Error())
+		return
+	}
+	resp := service.Preprocessing(c, string(data))
+	c.JSON(http.StatusOK, resp)
+}
 
 func Transactions(c *gin.Context) {
 	var req request.TransactionListReq
