@@ -148,6 +148,12 @@ func GetTransactionByIDWithTx(tx *gorm.DB, id int64) (*model.Transaction, error)
 
 func AddTransaction(ctx context.Context, req *model.Transaction) (int64, error) {
 	err := database.GetDB(ctx).Transaction(func(tx *gorm.DB) error {
+		// 检验基金代码是否存在
+		_, err := GetFundByCode(ctx, req.FundCode)
+		if err != nil {
+			logrus.Errorf("get fund by code: %s err: %v", req.FundCode, err)
+			return errors.WrapC(errors.CodeBadRequest, err)
+		}
 		// 处理数据
 		req.CalculateLoad()
 		if req.CreatedAt == 0 {
@@ -156,7 +162,7 @@ func AddTransaction(ctx context.Context, req *model.Transaction) (int64, error) 
 		// 买入数据
 		if req.IsBuy() {
 			req.LeftAmount = req.Amount
-			err := tx.Create(req).Error
+			err = tx.Create(req).Error
 			return err
 		}
 		// 卖出数据
@@ -267,36 +273,36 @@ var (
 	}
 )
 
-func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
-	transactions := Transactions(ctx, &request.TransactionListReq{
-		Pager: &database.Pager{
-			Page:     1,
-			PageSize: 1000,
-		},
-	})
-
-	fundGroups := make(map[string]bool)
-	buyTransactions := make(map[string][]*model.Transaction)
-	sellTransactions := make(map[int64][]*model.Transaction)
-
-	for _, t := range transactions.Items {
-		fundGroups[t.FundCode] = true
-		if t.IsBuy() {
-			buyTransactions[t.FundCode] = append(buyTransactions[t.FundCode], t)
-		} else {
-			sellTransactions[t.OriginalBuyId] = append(sellTransactions[t.OriginalBuyId], t)
-		}
-	}
-
+func ExportTransactionToExcel(ctx context.Context, exportType string) (*excelize.File, error) {
 	f := excelize.NewFile()
-
-	// 定义灰色样式
+	// 定义样式
 	grayStyle, _ := f.NewStyle(grayCellStyle)
 	defaultStyle, _ := f.NewStyle(defaultCellStyle)
 	activeStyle, _ := f.NewStyle(partialCellStyle)
 
-	for fundCode := range fundGroups {
-		sheetName := fundCode
+	fundsResp := Funds(ctx, &request.FundListReq{})
+	for _, fund := range fundsResp.Items {
+		// 获取基金代码对应的交易记录
+		transactionReq := &request.TransactionListReq{
+			FundCode: fund.Code,
+			Pager: &database.Pager{
+				Page:     1,
+				PageSize: 10000,
+			},
+		}
+		transactions := Transactions(ctx, transactionReq)
+
+		buyTransactions := make(map[string][]*model.Transaction)
+		sellTransactions := make(map[int64][]*model.Transaction)
+		for _, t := range transactions.Items {
+			if t.IsBuy() {
+				buyTransactions[t.FundCode] = append(buyTransactions[t.FundCode], t)
+			} else {
+				sellTransactions[t.OriginalBuyId] = append(sellTransactions[t.OriginalBuyId], t)
+			}
+		}
+
+		sheetName := fund.Name
 		if len(sheetName) > 31 {
 			sheetName = sheetName[:31]
 		}
@@ -313,15 +319,17 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 			cell := string(rune(col+'A')) + "1"
 			_ = f.SetCellValue(sheetName, cell, header)
 		}
-
 		// 按买入单价排序
-		buys := buyTransactions[fundCode]
+		buys := buyTransactions[fund.Code]
 		sort.Slice(buys, func(i, j int) bool {
 			return buys[i].Unit > buys[j].Unit
 		})
 
 		row := 1
 		for _, buy := range buys {
+			if exportType == model.ExportHasLeft && buy.LeftAmount == 0 {
+				continue
+			}
 			row++
 			rowName := strconv.Itoa(row)
 			_ = f.SetCellValue(sheetName, fmt.Sprintf("A%s", rowName), "买入")
@@ -374,6 +382,7 @@ func ExportTransactionToExcel(ctx context.Context) (*excelize.File, error) {
 			}
 		}
 	}
+
 	defaultSheet := f.GetSheetName(0)
 	_ = f.DeleteSheet(defaultSheet)
 	return f, nil

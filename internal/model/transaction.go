@@ -59,3 +59,7 @@ func (t *Transaction) CalculateSellProfit(buyUnit float64) {
 	// 利润率 = 利润/ 买入金额
 	t.ProfitMargin = t.Profit / (buyUnit * float64(t.Amount))
 }
+
+const (
+	ExportHasLeft = "has_left"
+)

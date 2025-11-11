@@ -119,7 +119,8 @@ func DelTransaction(c *gin.Context) {
 }
 
 func ExportTransactionToExcel(c *gin.Context) {
-	excelFile, err := service.ExportTransactionToExcel(c)
+	exportType := c.Query("export_type")
+	excelFile, err := service.ExportTransactionToExcel(c, exportType)
 	if err != nil {
 		logrus.Errorf("export transaction err: %v", err)
 		code := errors.ParseCoder(err).HTTPStatus()

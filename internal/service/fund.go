@@ -39,3 +39,9 @@ func Fund(ctx context.Context, req *model.Fund) error {
 	err := database.GetDB(ctx).Create(req).Error
 	return err
 }
+
+func GetFundByCode(ctx context.Context, code string) (*model.Fund, error) {
+	fund := &model.Fund{}
+	err := database.GetDB(ctx).Take(fund, "code = ?", code).Error
+	return fund, err
+}
